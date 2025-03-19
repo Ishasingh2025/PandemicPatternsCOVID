@@ -1,0 +1,553 @@
+---
+title: "Pandemic Patterns: Analyzing COVID-19 Trends in Europe"
+author: 'Isha Singh, Pablo Gonzalez, Quin Yuter, Rohit Mishra'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r image_for_title, echo=FALSE,out.width= "50%",fig.align='center'}
+knitr::include_graphics("/Users/quinyuter/Desktop/401 - R Stats/covidimage.jpeg")
+
+```
+      (image taken from [CDC](https://phil.cdc.gov/details.aspx?pid=23312) )
+
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, warning = FALSE,
+                      message = FALSE)
+
+library(ggplot2)
+library(gridExtra)
+library(lubridate)
+library(tidyverse)
+library(dplyr)
+library(Hmisc)
+
+# The read.csv() below reads the data directly from the web. You may use this or
+# you can download and read from a local copy of the data file. To work from a
+# local file, you will need to modify the read.csv() code here:
+
+data <- read.csv("https://opendata.ecdc.europa.eu/covid19/nationalcasedeath_eueea_daily_ei/csv",
+                 na.strings = "", fileEncoding = "UTF-8-BOM")
+
+# The zero-th step in any analysis is to 'sanity check' our data. Here, we call
+# glimpse() from the 'dplyr' package, but utils::str() would work, as well.
+glimpse(data)
+
+#
+
+# The last thing we're going to do is drop the 'continentExp' vector (as all
+# observations are "Europe"), coerce the 'dateRep' vector to a date format, and
+# coerce the country and territory vectors to factors.
+
+data <- data %>%
+  select(-c("continentExp")) %>%
+  mutate(dateRep = dmy(dateRep),
+         countriesAndTerritories = as.factor(countriesAndTerritories),
+         geoId = as.factor(geoId),
+         countryterritoryCode = as.factor(countryterritoryCode))
+
+```
+
+
+#### Definitions:
+
+* "Incidence rate" is equal to new daily cases per 100K individuals.
+
+* "Fatality rate" is equal to new daily deaths per 100K individuals.
+
+
+**INTRODUCTION**
+
+Covid-19 was a deadly virus that permeated across the world. Not only did major nations struggle to adapt to the drastic changes and restrictions brought upon by the virus, experts in epidemiology had several challenges in tracing the virus and its impact on citizens. Scientists were able to capture basic data on infected individuals in the European Union and European Economic Areas. We examine the various points that are collected in this dataset using analysis procedures, including descriptive and inferential statistics, and more sophisticated techniques such as linear regression and modeling, to better understand the impact of the virus on European countries.
+
+**LITERATURE REVIEW**
+
+At a global level, there were unprecedented effects of covid-19 on the global economy. In an article, titled “Observed impacts of the COVID-19 pandemic on global trade” and written by Jasper Verschuur, Elco E. Koks and Jim W. Hall, we learn that supply chain disruptions were prevalent, and statistical models were used to understand the predicted changes that resulted from these disruptions during the Pandemic. This informs our analysis, since we are also using regression analysis to understand the Covid-19 outbreak in European countries from an economic lens (Verschuur, Koks, & Hall, 2021).
+
+On top of looking at Covid-19 from an economic perspective, an article titled “Analysis and prediction of COVID‐19 trajectory: A machine learning approach” highlights the use of models such Random Forests, Nonlinear Regressions, and Decision Tree based regressions to run an in depth regression analysis. These methods can be used to predict cases well in advance, which gives key insights into the trends of Covid cases. Machine learning algorithms can be useful in suggesting strategies to policy makers. This can tell us how we can mold our future research and what we can do with the conclusions we reach (Majhi et al., 2020).
+
+Similarly, hypothesis testing plays a vital role in evaluating the efficacy of COVID-19 vaccines by analyzing multiple endpoints, such as SARS-CoV-2 infection, symptomatic COVID-19, and severe cases. In an article titled “Evaluating the Efficacy of Coronavirus Disease 2019 Vaccines” written Dan-Yu Lin, Donglin Zeng, Devan V Mehrotra, Lawrence Corey, and Peter B Gilbert, they incorporated robust statistical methods and simulations, and were able to assess vaccine efficacy, identify trends, and guide both policy decisions and future research. Together, Machine Learning and Hypothesis Testing approaches highlight the synergy between economic and health-focused analyses in understanding and responding to the pandemic (Lin et al., 2020).
+
+Additionally, the article “Correlation Between Mask Compliance and COVID-19 Outcomes in Europe” by Beny Spira studied the relationship between mask compliance and COVID-19 cases and deaths in 35 European countries. Mask compliance averaged 60.9% across Europe, but the study found only weak links with cases and moderate links with deaths. This suggests that factors such as the timing of mandates and healthcare capacity played a bigger role than masks alone, highlighting the need to consider multiple factors when analyzing the pandemic (Spira, 2022).
+
+These bodies of literature reviewed underscores the multifaceted impact of COVID-19, particularly its disruption to global economic systems and public health. Studies like Jasper Verschuur et al.'s examination of supply chain disruptions and statistical modeling emphasize the economic ramifications of the pandemic and the value of regression analysis in understanding these effects. From a public health perspective, machine learning approaches, as highlighted in “Analysis and prediction of COVID‐19 trajectory: A machine learning approach,” demonstrate the power of advanced algorithms in predicting case trends and informing policy decisions. Meanwhile, Dan-Yu Lin et al.'s research on vaccine efficacy highlights the critical role of hypothesis testing and robust statistical methods in evaluating health interventions and guiding future strategies.
+
+Further expanding this perspective, Beny Spira’s investigation into mask compliance reveals the complex interplay of public health measures, individual behavior, and systemic factors such as healthcare infrastructure and policy timing. This indicates that single-factor interventions may be insufficient, reinforcing the need for comprehensive, multi-dimensional analyses. 
+
+Collectively, these studies illustrate the synergy between economic modeling, machine learning, and hypothesis testing in addressing the challenges posed by COVID-19. They highlight the necessity of integrating diverse methodologies to gain a holistic understanding of the pandemic and to formulate effective strategies for mitigating its impacts in both economic and public health domains.
+
+
+**DESCRIPTIVE STATISTICS**
+
+We first want to take a deeper dive into our data through descriptive statistics.
+
+
+```{r descriptive_stats1, echo = FALSE, results = 'markup', fig.align = 'center'}
+
+
+library(ggplot2)
+
+# Data Summary
+summary(data)
+
+
+#incidence_rate and fatality_rate columns
+data$incidence_rate <- (data$cases / data$popData2020) * 100000
+data$fatality_rate <- (data$deaths / data$popData2020) * 100000
+
+total_cases <- tapply(data$cases, data$countriesAndTerritories, sum, na.rm = TRUE)
+total_deaths <- tapply(data$deaths, data$countriesAndTerritories, sum, na.rm = TRUE)
+
+# Top 5 countries by total cases
+top_countries <- names(sort(total_cases, decreasing = TRUE)[1:5])
+
+# Filter data for the top 5 countries to plot
+plot_data <- data[data$countriesAndTerritories %in% top_countries, ]
+
+# Incidence Rate Plot 
+ggplot(plot_data, aes(x = dateRep, y = incidence_rate, color = countriesAndTerritories)) +
+  geom_line() +
+  scale_fill_viridis_d() +
+  labs(title = "COVID-19 Incidence Rates", 
+       x = "Date", 
+       y = "Incidence Rate per 100K", 
+       color = "Country") +
+  
+  theme_minimal()
+
+# Fatality Rate Plot
+ggplot(plot_data, aes(x = dateRep, y = fatality_rate, color = countriesAndTerritories)) +
+  geom_line() +
+  labs(title = "COVID-19 Fatality Rates", 
+       x = "Date", 
+       y = "Fatality Rate per 100K", 
+       color = "Country") +
+  scale_fill_viridis_d() +
+  theme_minimal()
+
+# Case fatality rate table
+cfr <- (total_deaths / total_cases) * 100
+
+
+
+# Create the CFR data frame
+result_table <- data.frame(
+  Country = names(total_cases),
+  Total_Cases = as.numeric(total_cases),
+  Total_Deaths = as.numeric(total_deaths),
+  Case_Fatality_Rate = cfr
+)
+
+# Ensure proper sorting by CFR in descending order
+sorted_cfr_table <- result_table[order(-result_table$Case_Fatality_Rate), ][1:10, ]
+
+# Render the table using kable
+library(knitr)
+library(kableExtra)
+
+kable(sorted_cfr_table, 
+      col.names = c("Country", "Total Cases", "Total Deaths", "CFR (%)"), 
+      caption = "Top 10 Countries by Case Fatality Rate (CFR)",
+      digits = 4, 
+      format.args = list(big.mark = ",")) %>%  # Add commas for better readability
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = FALSE)
+
+
+
+ggplot(head(result_table[order(-result_table$Case_Fatality_Rate), ], 10), 
+       aes(x = reorder(Country, -Case_Fatality_Rate), 
+           y = Case_Fatality_Rate)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  theme_minimal() +
+  labs(title = "COVID-19 Case Fatality Rate by Country",
+       x = "Country",
+       y = "Case Fatality Rate (%)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(hjust = 0.5, size = 14),
+        plot.margin = margin(b = 40, l = 20)) +
+  scale_y_continuous(limits = c(0, max(result_table$Case_Fatality_Rate) * 1.1))
+
+```
+
+As a baseline, we can examine our data and the sources from which they came. The data is collected by the ECDC Epidemic Intelligence team, and measures incidence and fatality rates. However, this is only a cursory view of the virus’ impact. Additionally, there are many testing procedures that are not explored in this dataset, which means there is potential for more informative results given more robust testing infrastructure. As we are viewing results from an aggregate analysis of a per 100k individuals testing process, we can derive that there is a level of granularity that we do not have access to. 
+
+With these caveats, we examine the following dataset to gain more insight into the top countries with the highest Covid-19 rates. In doing a brief examination of summary statistics, we notice that there are several outliers. 
+
+
+
+
+To get a clearer picture of the different effects on countries that covid-19 had, we take a subset of the countries. Specifically, we choose the top 5 countries by incidence and fatality rate.  In examining the incidence rates, we see that the Netherlands were the most affected out of any of the other countries. This spike happened around 2022. We can determine that around this time, there were many new cases appearing, potentially due to increased travel during that time.  As far as Fatality rates are concerned, Poland had the highest number of fatalities across the span of 2021 to 2022. There is a bimodal pattern for this specific country. France has a major spike at the beginning, but subsided before 2021. This is the case for the other countries in this set as well. Finally, we look at the Case fatality rate, which showcases that Hungary had the highest deaths per case rate across the different nations. The majority of the countries seem to have around a 0.7% CF rate, which means that less than 1% of the affected populations see death. This is a relatively low proportion, but it is important to note that there are still large numbers of deaths irrespective of the proportion. 
+
+
+**INFERENTIAL STATISTICS**
+
+The two countries we are choosing to focus on are France and Germany.
+```{r inferential_stats, echo = FALSE, results = 'markup', fig.align = 'center'}
+
+germany_data <- data %>% filter(countriesAndTerritories == "Germany")
+france_data <- data %>% filter(countriesAndTerritories == "France")
+
+## Lets take the daily incidence rates 
+germany_data <- germany_data %>% mutate(incidence_rate = (cases / popData2020) * 100000)
+france_data <- france_data %>% mutate(incidence_rate = (cases / popData2020) * 100000)
+
+ggplot() +
+  geom_line(data = germany_data, aes(x = dateRep, y = incidence_rate, color = "Germany")) +
+  geom_line(data = france_data, aes(x = dateRep, y = incidence_rate, color = "France")) +
+  labs(title = "Daily COVID-19 Incidence Rates in Germany and France",
+       x = "Date", y = "Incidence Rate (per 100,000 population)") +
+  scale_color_manual(values = c("Germany" = "blue", "France" = "red")) +
+  theme_minimal()
+
+
+
+```
+
+Our null hypothesis is that there is no difference in the mean daily incidence rates between Germany and France. Making our alternative hypothesis that there is difference in the mean daily incidence rates.
+
+In order to test our null hypothesis, we will we use a t-test, this test is appropriate as we are comparing the means of two independent groups, Germany and France. Some distributional assumptions are that the data is normally distributed and that the variance of both groups are equal. Moreover, in our test we will use an alpha level of 0.05.
+
+```{r ttest, echo = FALSE, results = 'markup', fig.align = 'center'}
+# Perform the t-test
+t_test <- t.test(germany_data$incidence_rate, france_data$incidence_rate)
+
+t_test_details <- data.frame(
+  Statistic = c(
+    "Method",
+    "Data Used",
+    "Alternative Hypothesis",
+    "t-value",
+    "Degrees of Freedom",
+    "P-value",
+    "95% Confidence Interval",
+    "Mean of Group 1 (Germany)",
+    "Mean of Group 2 (France)"
+  ),
+  Value = c(
+    t_test$method,                               
+    "Germany vs France: Incidence Rates",        
+    t_test$alternative,                         
+    round(t_test$statistic, 3),                 
+    t_test$parameter,                           
+    format.pval(t_test$p.value, digits = 3),    
+    paste0("(", round(t_test$conf.int[1], 3), ", ", round(t_test$conf.int[2], 3), ")"),
+    round(t_test$estimate[1], 3),               
+    round(t_test$estimate[2], 3)                
+  )
+)
+
+library(knitr)
+library(kableExtra)
+
+kable(t_test_details, 
+      col.names = c("Statistic", "Value"), 
+      caption = "Detailed T-Test Results for Germany vs France") %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = FALSE)
+
+```
+As we observe our results, we obtain a p-value of 0.003055, which is less than our chosen alpha level of 0.05. This indicates that we have a statistically significant difference between the mean daily incidence rates between Germany and France. Moreover, we have a 95% confidence interval is (-18.75366,-3.82468, we observe it does not include 0, which further supports our previous conclusion of significant difference between the two means.
+
+With an alpha level of 0.05, we reject the null hypothesis. There is a significant difference in the mean daily incidence rates between Germany and France. Specifically, France has a higher mean daily incidence rate compared to Germany.
+
+
+**CORRELATION**
+
+```{r correlation1, echo = FALSE, results = 'markup', fig.align = 'center'}
+# Ensure that incidence_rate and fatality_rate columns are created in the dataset
+data$incidence_rate <- (data$cases / data$popData2020) * 100000
+data$fatality_rate <- (data$deaths / data$popData2020) * 100000
+
+data <- data[!is.na(data$incidence_rate) & !is.na(data$fatality_rate), ]
+
+correlation <- cor(data$incidence_rate, data$fatality_rate, use = "complete.obs")
+correlation_test <- cor.test(data$incidence_rate, data$fatality_rate, method = "pearson")
+
+par(mfrow = c(2, 1), mar = c(3, 3, 2, 1), oma = c(0, 0, 0, 0)) 
+
+# Incidence Rates Histogram
+inc_hist <- hist(data$incidence_rate, 
+                 breaks = 20, 
+                 plot = FALSE) 
+plot(inc_hist, 
+     col = "skyblue", 
+     main = "Incidence Rates", 
+     xlab = "Rate (per 100K)", 
+     ylab = "Frequency", 
+     ylim = c(0, max(inc_hist$counts) + 1000), 
+     cex.main = 0.9, cex.lab = 0.8, cex.axis = 0.8)
+
+text(inc_hist$mids, inc_hist$counts + 250, labels = inc_hist$counts, pos = 3, cex = 0.7, col = "black")
+
+# Fatality Rates Histogram
+fatal_hist <- hist(data$fatality_rate, 
+                   breaks = 20, 
+                   plot = FALSE) 
+
+plot(fatal_hist, 
+     col = "lightcoral", 
+     main = "Fatality Rates", 
+     xlab = "Rate (per 100K)", 
+     ylab = "Frequency", 
+     ylim = c(0, max(fatal_hist$counts) + 1000), 
+     cex.main = 0.9, cex.lab = 0.8, cex.axis = 0.8)
+
+text(fatal_hist$mids, fatal_hist$counts + 250, labels = fatal_hist$counts, pos = 3, cex = 0.7, col = "black")
+
+par(mfrow = c(1, 1), mar = c(4, 4, 3, 2)) 
+
+# Scatterplot for Incidence vs Fatality Rates
+plot(data$incidence_rate, data$fatality_rate, 
+     main = "Incidence vs Fatality Rates", 
+     xlab = "Incidence Rate (per 100K)", 
+     ylab = "Fatality Rate (per 100K)", 
+     col = "blue", 
+     pch = 20, 
+     cex.main = 0.9, cex.lab = 0.8, cex.axis = 0.8, 
+     xlim = c(0, max(data$incidence_rate, na.rm = TRUE) + 10), # Adjust x-axis limit
+     ylim = c(0, max(data$fatality_rate, na.rm = TRUE) + 10)) # Adjust y-axis limit
+
+# Regression line
+abline(lm(data$fatality_rate ~ data$incidence_rate), col = "red", lwd = 1.2)
+
+# Identify highest outlier
+max_outlier <- data[which.max(data$fatality_rate), ] 
+
+points(max_outlier$incidence_rate, max_outlier$fatality_rate, col = "red", pch = 19, cex = 1.1)
+
+text(max_outlier$incidence_rate, max_outlier$fatality_rate - 10, # Adjust label position
+     labels = paste("Outlier: (", round(max_outlier$incidence_rate, 2), ",", round(max_outlier$fatality_rate, 2), ")", sep = ""), 
+     pos = 4, col = "red", cex = 0.8)
+
+
+
+
+```
+
+```{r extendedpartofCorrelation, echo = FALSE, results = 'markup', fig.align = 'center'}
+correlation_details <- data.frame(
+  Statistic = c(
+    "Method",
+    "Data Used",
+    "Alternative Hypothesis",
+    "t-value",
+    "Degrees of Freedom",
+    "P-value",
+    "95% Confidence Interval",
+    "Sample Correlation"
+  ),
+  Value = c(
+    correlation_test$method,                               
+    "Incidence Rate vs Fatality Rate",                     
+    correlation_test$alternative,                        
+    round(correlation_test$statistic, 3),                
+    correlation_test$parameter,                          
+    format.pval(correlation_test$p.value, digits = 3),   
+    paste0("(", round(correlation_test$conf.int[1], 3), ", ", round(correlation_test$conf.int[2], 3), ")"),
+    round(correlation_test$estimate, 3)                 
+  )
+)
+
+library(knitr)
+kable(correlation_details, col.names = c("Statistic", "Value"), caption = "Detailed Correlation Test Results")
+
+
+```
+The correlation study looks at how COVID-19 incidence rates (new cases per 100,000 persons) compare to fatality rates (new deaths per 100,000). The Pearson correlation coefficient of 0.113 indicates a very weak relationship between the two. This means that while rates of incidence grow, fatality rates climb relatively not much. Although this relationship is statistically significant (p-value < 2e-16), the small magnitude of the correlation suggests that other factors may have a higher influence. The confidence interval, which ranges from 0.101 to 0.124, emphasizes how insignificant this association is. The histograms help illustrate how these rates are spread across countries. In terms of incidence rates, the majority of countries have fewer than 500 cases per 100,000 people, with 25,874 reporting less than 100. In terms of fatality rates, most countries have less than 20 deaths per 100,000 people, with several reporting less than 5. The scatterplot shows a similar pattern, with most countries seeing low incidence and fatality rates. However, one country is an exception, with an incidence rate of 26.76 and a mortality rate of 128.22. This demonstrates that factors such as healthcare quality, government policy, and local conditions can have a far higher impact on fatality rates than the number of cases alone.
+
+**REGRESSION**
+
+We are fitting a model on data from twenty countries considering total new cases as a function of population, population density and gross domestic product (GDP) per capita. The GDP per capita is given in "purchasing power standard," which considers the costs of goods and services in a country relative to incomes in that country; i.e. we will consider this as appropriately standardized.
+
+```{r regression_a, echo = FALSE, results = 'markup', fig.align = 'center'}
+
+# The code below creates a new data frame, 'model_df,' that includes the area,
+# GDP per capita, population and population density for the twenty (20)
+# countries of interest. All you should need to do is execute this code, as is.
+
+# You do not need to add code in this chunk. You will need to add code in the
+# 'regression_b,' 'regression_c' and 'regression_d' code chunks.
+
+twenty_countries <- c("Austria", "Belgium", "Bulgaria", "Cyprus", "Denmark",
+                      "Finland", "France", "Germany", "Hungary", "Ireland",
+                      "Latvia", "Lithuania", "Malta", "Norway", "Poland",
+                      "Portugal", "Romania", "Slovakia", "Spain", "Sweden")
+
+sq_km <- c(83858, 30510, 110994, 9251, 44493, 338145, 551695, 357386, 93030,
+           70273, 64589, 65300, 316, 385178, 312685, 88416, 238397, 49036,
+           498511, 450295)
+
+gdp_pps <- c(128, 118, 51, 91, 129, 111, 104, 123, 71, 190, 69, 81, 100, 142,
+             71, 78, 65, 71, 91, 120)
+
+model_df <- data %>%
+  select(c(countriesAndTerritories, popData2020)) %>%
+  filter(countriesAndTerritories %in% twenty_countries) %>%
+  distinct(countriesAndTerritories, .keep_all = TRUE) %>%
+  add_column(sq_km, gdp_pps) %>%
+  mutate(pop_dens = popData2020 / sq_km) %>%
+  rename(country = countriesAndTerritories, pop = popData2020)
+
+```
+
+Next, we need to add one (1) more column to our 'model_df' data frame. Specifically, one that has the total number of new cases for each of the twenty (20) countries. We calculate the total number of new cases by summing all the daily new cases, for each country, across all the days in the dataset.
+
+```{r regression_b, echo = FALSE, results = 'markup', fig.align = 'center'}
+### The following code will be removed for students to complete the work themselves.
+
+total_cases <- data %>%
+  select(c(countriesAndTerritories, cases)) %>%
+  group_by(countriesAndTerritories) %>%
+  dplyr::summarize(total_cases = sum(cases, na.rm = TRUE)) %>%
+  filter(countriesAndTerritories %in% twenty_countries) %>%
+  select(total_cases)
+
+model_df <- model_df %>%
+  add_column(total_cases)
+
+```
+
+We will gain a deeper look into the data.
+
+```{r regression_c, echo = FALSE, results = 'markup', fig.align = 'center'}
+## Description of the model_df data frame, first looking at the classes of each column
+sapply(model_df, class)
+## Looking at the spread of the variables
+summary(model_df)
+knitr::kable(model_df)
+```
+We first see that our response variable, `total_cases`, is an integer variable. The rest of the predictor variables are numeric, with the exception of population, which is also integer, and `country`, which is a factor. Each row in the model_df data frame represent one of the 20 countries we are focusing on for our regression analysis.
+```{r, echo = FALSE, results = 'markup', fig.align = 'center'}
+# Fitting the regression model, with total_cases as our response variable
+model_fit <- lm(total_cases ~ pop + gdp_pps + pop_dens, data = model_df)
+
+## Showing the summary of the fitted regression model
+summary(model_fit)
+
+```
+Our null hypothesis is that none of the predictors are significant predictors of total_cases (i.e. \( H_0: \beta_i = 0 \)). We see here that the only variable that is a significant predictor of total cases is population, thus we can reject the null hypothesis. This makes sense because there are more people in a higher population to get Covid-19, thus the significant p-value and the positive coefficient estimate. It is quite surprising that population density is not a significant predictor because one may think with more people crowded together, the more likely people are to spread the disease from one to another. We see that GDP is not significant in predicting total cases, which comes as a bit of a surprise. We initially thought that countries with a higher GDP would have more vaccinations to go around, thus stopping the disease from spreading as much. So, we expected a significant p-value with a negative coefficient estimate. However, it may make sense that GDP is not a significant predictor because it does not have to do with population or people being near one another.
+
+The R-Squared value is 0.8982 and the Adjusted R-Squared value is 0.8791. These are both very high, and thus very good values. These indicate that the model is a good fit, as the model explains almost 90% of the variance. We see that the Adjusted R-Squared value is less than the R-Squared value, which makes sense because two of the predictors in the model are not statistically significant. Overall, this seems like a good model to use to predict total cases for other countries, but only one of the three initial predictors, population, is significant. So, we are going to fit a new model with just population as a predictor to see how it affects the R-Squared values.
+
+```{r, echo = FALSE, results = 'markup', fig.align = 'center'}
+## Regression model with just population as a predictor
+# Fitting the regression model, with total_cases as our response variable
+model_fit_pop <- lm(total_cases ~ pop, data = model_df)
+
+## Showing the summary of the fitted regression model
+summary(model_fit_pop)
+```
+
+In this new output, we see that again, population is a statistically significant predictor. In fact, the p-value is much less in this model than it is in the model above. We also see that the Multiple R-Squared value is 0.8896 and the Adjusted R-Squared value is 0.8835. These are both high, again suggesting that this model is a good fit. While the Multiple R-Squared value in this model is lower, the Adjusted R-Squared value is higher.
+
+Between the two models fitted above, we are going to choose the model with all three predictors for multiple reasons. Model_fit has improved prediction accuracy because the additional predictors (population density and GDP) explain more variance. In context, this helps capture countries' socioeconomic and spatial characteristics, which, even though these predictors are not significant, they might influence case count. Also, with all three predictors rather than just population, we have a lower risk of oversimplification. Being overly simple could lead to negative predictions if the country's population is smaller (like Luxembourg's is). This oversimplification leads to poor generalization across diverse datasets. Also, because our data is real world data that explains a real phenomenon (COVID-19), having more predictors accounts for the fact that COVID-19 is influenced by multiple factors which makes the model more comprehensive, even though two of the three predictors are insignificant. Having insignificant predictors in our model is okay in this case because it captures real world complexity and reduces bias in the predictions. It allows for a more robust model.
+
+Before we continue with predictions, it is important to check the assumptions.
+
+```{r, echo = FALSE, results = 'markup', fig.align = 'center'}
+library(ggfortify)
+autoplot(model_fit)
+```
+These plots tell us that the assumptions are not fully validated. The residuals vs. fitted plot tells us that there may be a non-linear relationship between the predictors and the response. In the Q-Q plot, we can see a definitive deviation in the tails from the line, which means the data may be non-normal. Also, in the residuals vs. leverage plot, the independence assumption is partially violated due to the presence of high leverage points. The scale-location plot also sees a noticeable curve, suggesting heteroscedasticity.
+
+To address these issues, we will do some feature engineering. We will starting with fixing the linearity. 
+```{r, echo = FALSE, results = 'markup', fig.align = 'center'}
+## Addressing linearity by adding interaction terms and a quadratic term on our initial significant variable: population.
+
+model_int_poly <- lm(total_cases ~ poly(pop, 2)*gdp_pps*pop_dens, data = model_df)
+summary(model_int_poly )
+autoplot(model_int_poly )
+```
+
+Our assumptions look much better here, so we will use this new model, while also see how different it affects predictions compared to the initial model. We also see that some interaction terms are significant, even if the variable by itself is not. Our adjusted R-Squared and our Multiple R-Squared have both increased significantly, which tells us this fits our data much better.
+
+```{r regression_d, echo = FALSE, results = 'markup', fig.align = 'center'}
+# The code below defines our 'newdata' data frame for applying our model to the
+# population, population density and GDP per capita for two (2). Please execute
+# the code as given.
+
+newdata <- data.frame(country = c("Luxembourg", "Netherlands"),
+                      pop = c(626108, 17407585),
+                      gdp_pps = c(261, 130),
+                      pop_dens = c(626108, 17407585) / c(2586, 41540))
+
+# Add code here returning the actual  total cases from our dataset for the
+# Netherlands and Luxembourg.
+## First finding the total cases for Netherlands and Luxembourg
+total_cases_nethlux <- data %>%
+  filter(countriesAndTerritories %in% c("Netherlands", "Luxembourg")) %>%
+  select(c(countriesAndTerritories, cases)) %>%
+  group_by(countriesAndTerritories) %>%
+  dplyr::summarize(total_cases = sum(cases, na.rm = TRUE)) %>%
+  rename(Country = countriesAndTerritories, 
+         `Total Cases` = total_cases)
+
+knitr::kable(total_cases_nethlux, caption = "Actual Total Cases From Our Dataset For The Netherlands and Luxembourg")
+
+
+# Add code here returning the total cases for the Netherlands and Luxembourg
+# predicted by our model.
+predictions <- predict(model_fit, newdata = newdata)
+predictions_int_poly <- predict(model_int_poly, newdata = newdata)
+
+## Adding predictions to the dataframe
+total_cases_nethlux$`Predicted Total Cases` <- predictions
+total_cases_nethlux$`Predicted Total Cases w/ Feature Engineering` <- predictions_int_poly
+
+total_cases_nethlux <- total_cases_nethlux %>%
+  rename(`Actual Total Cases` = `Total Cases`) %>%
+  select(c(Country, `Predicted Total Cases`, `Predicted Total Cases w/ Feature Engineering`, `Actual Total Cases`))
+
+knitr::kable(total_cases_nethlux, caption = "Predicted Total Cases vs. Actual Total Cases From Our Dataset")
+
+
+```
+First, we look at the predicted total cases versus the actual total cases for Luxembourg. The predicted total cases is 3,953,237 while the actual total cases is 301,031. This means that the prediction over estimates by over 3,500,000 cases. This is probably because Luxembourg has such a small population. For the Netherlands, the predicted total cases is 7,522,800 while the actual total cases is 8,494,705 cases, which is just under 1,000,000 cases off. While this is much better than the Luxembourg prediction, it still is not super close. This underestimation could have to do with factors that our data does not include, like public health policies or how often people are being tested.
+
+The large residual for Luxembourg (3,652,206 cases) could suggest that the model is not as robust as we initially thought, as countries with extremely small populations will deal with the same effect. The smaller residual for the Netherlands (971,905 cases) suggests that the model is better at predicting when the country's predictor values are closer to those in the initial model data frame. 
+
+Looking at the model that uses the interaction term and the polynomial term, we see that the predictions are incredibly off. This could be because the feature engineering may have over fit the data. The int_poly model fits the training data better, but it does so at the expense of generalizability.
+
+See Appendix for more models fit using other various feature engineering techniques. We see that for the Netherlands, using the model with the interaction between population and population density predicts the closest total case value to the actual total case value. The predicted value is just 181,272 lower than the actual value. For Luxembourg, the closest predicted value is when we use the interaction effect between population and GDP. However, this value is negative, so the next best model is the model with the log transformation of GDP. It is important to note that with both of these models, the predicted value is still over 2,000,000 cases away, which is still much better than 3,500,000.
+
+In conclusion, after fitting many different models using various techniques, we see that the biggest issue with this regression analysis is that the Luxembourg and Netherlands data falls on the outside of the data we trained our models on, thus making it hard to predict more accurately.
+
+**CONCLUSION**
+
+Through the exploratory data analysis, we derive that several countries in the European Economic Area were considerably affected by Covid-19. Our analysis revealed several outliers, both from incidence and fatality rates, highlighting the spread and damage done by the virus. Key insights include the exacerbation of the virus’ impact by geopolitical factors, and the disparity between Eastern and Western European countries. As we perform hypothesis testing, we are able to determine if there is a statistically significant difference between the mean daily incidence rates between countries. By performing a t-test we are to determine a p-value to either reject or fail to reject the null hypothesis with our designated alpha level. In this case, we were able to conclude that there is a statistically significant difference between the mean daily incidences of Germany and France. For correlation, the Pearson coefficient is 0.113, showing a very weak link between COVID-19 incidence and fatality rates. This suggests that factors like healthcare quality and policies play a bigger role in affecting death rates than case numbers. In the regression analysis, we used a linear regression with additional feature engineering to build a predictive model for total cases in The Netherlands and Luxembourg. However, due to the small size of Luxembourg’s population and the lack of more complex predictive variables, we were unable to create significant and accurate predictions. To conduct future research, we would like to find those more complex variables, like testing rates and healthcare policies, to make better predictors. We also would conduct network analysis on how traveling/migration affected infection rates in destination countries. Overall, this project helped us gain deeper insights into the Covid-19 pandemic in Europe.
+
+
+**SOURCES**
+```{r, echo=FALSE,out.width= "75%",fig.align='center'}
+knitr::include_graphics("/Users/quinyuter/Desktop/401 - R Stats/Citations EDA Project 2.png")
+
+```
+
+**APPENDIX**
+
+```{r, echo = FALSE, results = 'markup', fig.align = 'center'}
+## log transformation of population density
+model_fit_logpopdens <- lm(total_cases ~ pop + gdp_pps + log(pop_dens), data = model_df)
+prediction_logpopdens <- predict(model_fit_logpopdens, newdata = newdata)
+
+## log transformation of GDP
+model_fit_logGDP <- lm(total_cases ~ pop + log(gdp_pps) + pop_dens, data = model_df)
+prediction_logGDP <- predict(model_fit_logGDP, newdata = newdata)
+
+## Interaction between population and GDP
+model_fit_interaction <- lm(total_cases ~ pop * gdp_pps + pop_dens, data = model_df)
+prediction_interaction <- predict(model_fit_interaction, newdata = newdata)
+
+## Interaction between population and population density
+model_fit_interaction_pop <- lm(total_cases ~ pop * pop_dens + gdp_pps, data = model_df)
+prediction_interaction_pop <- predict(model_fit_interaction_pop, newdata = newdata)
+
+## Output
+total_cases_nethlux$`Population Density log transformation` <- prediction_logpopdens
+total_cases_nethlux$`GDP log transformation` <- prediction_logGDP
+total_cases_nethlux$`Interaction Between population and GDP` <- prediction_interaction
+total_cases_nethlux$`Interaction Between population and population density` <- prediction_interaction_pop
+
+knitr::kable(t(total_cases_nethlux), caption = "Additional Fitted Models with Feature Engineering")
+```
